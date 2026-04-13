@@ -2,7 +2,7 @@ import sqlite3
 from pybliometrics.scopus import ScopusSearch, init
 import time
 
-def coletar_artigos_unicamp(ano_inicio=2020, ano_fim=2025, ano_lote=2020):
+def coletar_artigos_unicamp(ano_inicio, ano_fim, ano_lote):
     conn = sqlite3.connect('unicamp_network.db')
     cursor = conn.cursor()
     
@@ -16,7 +16,6 @@ def coletar_artigos_unicamp(ano_inicio=2020, ano_fim=2025, ano_lote=2020):
         ano_lote        INTEGER,
         citedby_count   INTEGER,
         source_id       TEXT,
-        subject_areas   TEXT,
         authkeywords    TEXT
     )''')
 
@@ -26,14 +25,12 @@ def coletar_artigos_unicamp(ano_inicio=2020, ano_fim=2025, ano_lote=2020):
     search = ScopusSearch(query, download=True, refresh=False)
 
     for doc in search.results or []:
-        # Serializa listas em strings separadas por ponto-e-vírgula
-        subject_areas = ";".join([s.area for s in doc.subject_areas]) if doc.subject_areas else None
-        authkeywords  = ";".join(doc.authkeywords) if doc.authkeywords else None
+        authkeywords = ";".join(doc.authkeywords) if doc.authkeywords else None
 
         cursor.execute('''INSERT OR IGNORE INTO publicacoes
                           (eid, titulo, ano, author_count, ano_lote,
-                           citedby_count, source_id, subject_areas, authkeywords)
-                          VALUES (?,?,?,?,?,?,?,?,?)''',
+                           citedby_count, source_id, authkeywords)
+                          VALUES (?,?,?,?,?,?,?,?)''',
                        (doc.eid,
                         doc.title,
                         doc.coverDate[:4] if doc.coverDate else None,
@@ -41,23 +38,38 @@ def coletar_artigos_unicamp(ano_inicio=2020, ano_fim=2025, ano_lote=2020):
                         ano_lote,
                         doc.citedby_count,
                         doc.source_id,
-                        subject_areas,
                         authkeywords))
         
+        # Pré-filtro: guarda apenas autores cuja afiliação na publicação é a Unicamp (ID 60007324).
+        # doc.author_afids tem um entry por autor, separados por ';'. Cada entry pode conter
+        # múltiplas afiliações separadas por '-'. Ex: "60007324-60003999;55432100"
+        # Fallback: se author_afids não estiver disponível no cache, inclui todos os autores
+        # e delega a filtragem ao refinador_unicamp.py.
         if doc.author_ids:
             ids = doc.author_ids.split(';')
-            for auth_id in ids:
-                cursor.execute('INSERT OR IGNORE INTO autores_brutos (auth_id) VALUES (?)', (auth_id,))
-                cursor.execute('INSERT OR IGNORE INTO autor_publicacao VALUES (?,?)', (auth_id, doc.eid))
+            if doc.author_afids:
+                afids = doc.author_afids.split(';')
+                for auth_id, afid_entry in zip(ids, afids):
+                    if '60029570' in afid_entry: # Número afid referente à unicamp
+                        cursor.execute('INSERT OR IGNORE INTO autores_brutos (auth_id) VALUES (?)', (auth_id.strip(),))
+                        cursor.execute('INSERT OR IGNORE INTO autor_publicacao VALUES (?,?)', (auth_id.strip(), doc.eid))
+            else:
+                for auth_id in ids:
+                    cursor.execute('INSERT OR IGNORE INTO autores_brutos (auth_id) VALUES (?)', (auth_id.strip(),))
+                    cursor.execute('INSERT OR IGNORE INTO autor_publicacao VALUES (?,?)', (auth_id.strip(), doc.eid))
     
     conn.commit()
+
+    total_publicacoes = cursor.execute('SELECT COUNT(*) FROM publicacoes WHERE ano_lote = ?', (ano_lote,)).fetchone()[0]
+    total_autores     = cursor.execute('SELECT COUNT(*) FROM autores_brutos').fetchone()[0]
     conn.close()
-    print("Fase 1 completa: Artigos e lista bruta de autores coletados.")
+    print(f"Fase 1 completa: {total_publicacoes} publicações e {total_autores} autores únicos (acumulado) coletados.")
 
 if __name__ == "__main__":
     init()
 
-    anos = [2025, 2024, 2023, 2022]
+    # Coleta completa: 2018-2023 (treino), 2024 (validação), 2025 (teste)
+    anos = list(range(2025, 2017, -1))
     
     for ano in anos:
         print("="*50)

@@ -1,4 +1,4 @@
-from pybliometrics.scopus import AuthorRetrieval
+from pybliometrics.scopus import AuthorRetrieval, init
 import sqlite3
 import time
 
@@ -17,23 +17,27 @@ def filtrar_apenas_unicamp():
         coauthor_count  INTEGER
     )''')
 
-    # Pegamos autores que ainda não foram processados
     autores_para_verificar = cursor.execute('SELECT auth_id FROM autores_brutos WHERE processado = 0').fetchall()
+
+    total       = len(autores_para_verificar)
+    unicamp     = 0
+    processado  = 0
+    erros       = 0
+    batch_start = time.time()
+
+    print(f"Total de autores a verificar: {total}")
 
     for (auth_id,) in autores_para_verificar:
         try:
             au = AuthorRetrieval(auth_id)
-            
-            # Verificamos se a afiliação atual ou recente é Unicamp (ID 60007324)
+
             is_unicamp = False
             if au.affiliation_history:
                 if any(aff.id == '60007324' for aff in au.affiliation_history):
                     is_unicamp = True
-            
+
             if is_unicamp:
                 areas = ";".join([area.area for area in au.subject_areas]) if au.subject_areas else ""
-
-                # pub_year_first: ano do primeiro paper indexado — proxy de seniority do pesquisador
                 pub_year_first = au.publication_range[0] if au.publication_range else None
 
                 cursor.execute('''INSERT OR IGNORE INTO autores_unicamp
@@ -49,13 +53,34 @@ def filtrar_apenas_unicamp():
                                 au.h_index,
                                 pub_year_first,
                                 au.coauthor_count))
-            
+                unicamp += 1
+
             cursor.execute('UPDATE autores_brutos SET processado = 1 WHERE auth_id = ?', (auth_id,))
             conn.commit()
-            
-        except Exception as e:
-            print(f"Erro no autor {auth_id}: {e}")
-            time.sleep(1) # Pausa para não ser bloqueado pela API
+            processado += 1
 
-    conn.close()
-    print("Limpeza concluída. Apenas pesquisadores Unicamp restaram na tabela autores_unicamp.")
+        except Exception as e:
+            msg = str(e)
+            if "cannot be found" in msg or "404" in msg:
+                # Perfil inexistente no Scopus — marca como processado para não retentar
+                cursor.execute('UPDATE autores_brutos SET processado = 1 WHERE auth_id = ?', (auth_id,))
+                conn.commit()
+            else:
+                # Erro recuperável (limite de API, rede) — retenta na próxima execução
+                erros += 1
+                print(f"Erro no autor {auth_id}: {e}")
+                time.sleep(1)
+
+        if (processado + erros) % 100 == 0:
+            elapsed = time.time() - batch_start
+            print(f"  [{processado + erros}/{total}] processados | Unicamp: {unicamp} | Erros: {erros} | último batch: {elapsed:.1f}s")
+            batch_start = time.time()
+
+    print(f"\nConcluído: {processado} processados, {unicamp} Unicamp, {erros} erros.")
+
+if __name__ == "__main__":
+    init()
+    filtrar_apenas_unicamp()
+
+if __name__ == "__main__":
+    filtrar_apenas_unicamp()
