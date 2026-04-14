@@ -2,9 +2,6 @@ import sqlite3
 from pathlib import Path
 import networkx as nx
 
-DB_PATH    = Path(__file__).parent.parent / "data" / "raw" / "unicamp_network.db"
-GRAPHS_DIR = Path(__file__).parent.parent / "data" / "graphs"
-
 # Decisões metodológicas documentadas
 # Treino: 2018-2023 | Validação: 2024 | Teste: 2025
 # Filtro: >= 2 publicações no período de treino (análogo ao "Core" de Liben-Nowell & Kleinberg, 2007)
@@ -15,14 +12,16 @@ GRAPHS_DIR = Path(__file__).parent.parent / "data" / "graphs"
 # para enriquecer os nós com metadados (h-index, áreas, etc.).
 ANO_TREINO_INI  = 2018
 ANO_TREINO_FIM  = 2023
+ANO_VAL         = 2024
+ANO_TESTE       = 2025
 MIN_PUBLICACOES = 2
 
-def construir_grafo(db_path=DB_PATH):
-    conn   = sqlite3.connect(db_path)
-    cursor = conn.cursor()
+DB_PATH    = Path(__file__).parent.parent / "data" / "raw" / "unicamp_network.db"
+GRAPHS_DIR = Path(__file__).parent.parent / "data" / "graphs"
 
-    # Autores com >= MIN_PUBLICACOES no período de treino
-    # Fonte: autores_brutos, já pré-filtrados por afid Unicamp no scopus.py
+
+def get_auth_ids_validos(cursor):
+    """Retorna o conjunto de autores com >= MIN_PUBLICACOES no período de treino."""
     cursor.execute('''
         SELECT ab.auth_id
         FROM autores_brutos ab
@@ -34,9 +33,10 @@ def construir_grafo(db_path=DB_PATH):
               AND CAST(p.ano AS INTEGER) BETWEEN ? AND ?
         ) >= ?
     ''', (ANO_TREINO_INI, ANO_TREINO_FIM, MIN_PUBLICACOES))
+    return {row[0] for row in cursor.fetchall()}
 
-    auth_ids_validos = {row[0] for row in cursor.fetchall()}
 
+def diagnostico_autores(cursor, auth_ids_validos):
     total_brutos = cursor.execute('SELECT COUNT(*) FROM autores_brutos').fetchone()[0]
     total_1_pub  = cursor.execute('''
         SELECT COUNT(*) FROM autores_brutos ab
@@ -53,15 +53,15 @@ def construir_grafo(db_path=DB_PATH):
     print(f"  Com >= 1 pub em {ANO_TREINO_INI}-{ANO_TREINO_FIM}                    : {total_1_pub}")
     print(f"  Com >= {MIN_PUBLICACOES} pubs em {ANO_TREINO_INI}-{ANO_TREINO_FIM} (nós do grafo)  : {len(auth_ids_validos)}")
     print(f"  Excluídos por < {MIN_PUBLICACOES} pubs no treino                : {total_brutos - len(auth_ids_validos)}")
-    print(f"  Apenas em 2024/2025 (fora do treino)             : {total_brutos - total_1_pub}")
+    print(f"  Apenas em {ANO_VAL}/{ANO_TESTE} (fora do treino)             : {total_brutos - total_1_pub}")
 
+
+def construir_grafo_treino(cursor, auth_ids_validos):
+    """Grafo de coautoria no período de treino (2018-2023)."""
     G = nx.Graph()
-
-    # Nós — sem atributos por enquanto; serão enriquecidos na Fase 2 pelo refinador_unicamp.py
     for auth_id in auth_ids_validos:
         G.add_node(auth_id)
 
-    # Arestas: pares de autores que co-publicaram no período de treino
     cursor.execute('''
         SELECT ap1.auth_id, ap2.auth_id,
                COUNT(*)                    AS peso,
@@ -78,34 +78,76 @@ def construir_grafo(db_path=DB_PATH):
         if auth1 in auth_ids_validos and auth2 in auth_ids_validos:
             G.add_edge(auth1, auth2, weight=peso, ano_primeira_colab=ano_primeira_colab)
 
-    conn.close()
     return G
 
 
+def construir_grafo_periodo(cursor, auth_ids_validos, ano, arestas_existentes):
+    """
+    Grafo de novas colaborações em `ano`, considerando apenas pares de autores
+    que ainda não colaboraram nos períodos anteriores (arestas_existentes).
+    Representa os links positivos a serem previstos naquele período.
+    """
+    G = nx.Graph()
+    for auth_id in auth_ids_validos:
+        G.add_node(auth_id)
+
+    cursor.execute('''
+        SELECT ap1.auth_id, ap2.auth_id,
+               COUNT(*)                    AS peso,
+               MIN(CAST(p.ano AS INTEGER)) AS ano_primeira_colab
+        FROM autor_publicacao ap1
+        JOIN autor_publicacao ap2
+          ON ap1.eid = ap2.eid AND ap1.auth_id < ap2.auth_id
+        JOIN publicacoes p ON ap1.eid = p.eid
+        WHERE CAST(p.ano AS INTEGER) = ?
+        GROUP BY ap1.auth_id, ap2.auth_id
+    ''', (ano,))
+
+    for auth1, auth2, peso, ano_primeira_colab in cursor.fetchall():
+        par = (min(auth1, auth2), max(auth1, auth2))
+        if (auth1 in auth_ids_validos and auth2 in auth_ids_validos
+                and par not in arestas_existentes):
+            G.add_edge(auth1, auth2, weight=peso, ano_primeira_colab=ano_primeira_colab)
+
+    return G
+
+
+def salvar(G, nome):
+    path = GRAPHS_DIR / nome
+    nx.write_graphml(G, path)
+    print(f"  Exportado: {path}")
+
+
 if __name__ == "__main__":
-    G = construir_grafo()
+    conn   = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
 
-    n    = G.number_of_nodes()
-    e    = G.number_of_edges()
-    grau = (2 * e / n) if n > 0 else 0
-    comp = nx.number_connected_components(G)
+    auth_ids_validos = get_auth_ids_validos(cursor)
+    diagnostico_autores(cursor, auth_ids_validos)
 
-    print(f"\n=== Grafo completo de treino ({ANO_TREINO_INI}-{ANO_TREINO_FIM}) ===")
-    print(f"  Vértices  : {n}")
-    print(f"  Arestas   : {e}")
-    print(f"  Grau médio: {grau:.2f}")
-    print(f"  Componentes conexas: {comp}")
+    # --- Grafo de treino ---
+    G_treino = construir_grafo_treino(cursor, auth_ids_validos)
+    print(f"\n=== Grafo de treino ({ANO_TREINO_INI}-{ANO_TREINO_FIM}) ===")
+    print(f"  Vértices: {G_treino.number_of_nodes()}")
+    print(f"  Arestas : {G_treino.number_of_edges()}")
+    salvar(G_treino, "grafo_treino.graphml")
 
-    nx.write_graphml(G, GRAPHS_DIR / "grafo_treino.graphml")
-    print(f"\nExportado: {GRAPHS_DIR / 'grafo_treino.graphml'}")
+    # Conjunto de arestas já existentes no treino (para filtrar novidades em val/teste)
+    arestas_treino = {(min(u, v), max(u, v)) for u, v in G_treino.edges()}
 
-    # LCC — usada na Fase 2 (modelagem); exportada separadamente
-    lcc_nodes = max(nx.connected_components(G), key=len)
-    G_lcc     = G.subgraph(lcc_nodes).copy()
+    # --- Grafo de validação (novas colaborações em 2024) ---
+    G_val = construir_grafo_periodo(cursor, auth_ids_validos, ANO_VAL, arestas_treino)
+    print(f"\n=== Grafo de validação ({ANO_VAL}) ===")
+    print(f"  Vértices: {G_val.number_of_nodes()}")
+    print(f"  Arestas (novas colaborações): {G_val.number_of_edges()}")
+    salvar(G_val, "grafo_validacao.graphml")
 
-    print(f"\n=== Maior componente conexa (LCC) ===")
-    print(f"  Vértices : {G_lcc.number_of_nodes()} ({G_lcc.number_of_nodes()/n*100:.1f}% do total)")
-    print(f"  Arestas  : {G_lcc.number_of_edges()}")
+    # --- Grafo de teste (novas colaborações em 2025) ---
+    arestas_treino_val = arestas_treino | {(min(u, v), max(u, v)) for u, v in G_val.edges()}
+    G_teste = construir_grafo_periodo(cursor, auth_ids_validos, ANO_TESTE, arestas_treino_val)
+    print(f"\n=== Grafo de teste ({ANO_TESTE}) ===")
+    print(f"  Vértices: {G_teste.number_of_nodes()}")
+    print(f"  Arestas (novas colaborações): {G_teste.number_of_edges()}")
+    salvar(G_teste, "grafo_teste.graphml")
 
-    nx.write_graphml(G_lcc, GRAPHS_DIR / "grafo_treino_lcc.graphml")
-    print(f"Exportado: {GRAPHS_DIR / 'grafo_treino_lcc.graphml'}")
+    conn.close()
