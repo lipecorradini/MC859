@@ -1,2 +1,2 @@
-unicamp_network.db
-coleta.log
+data/raw/
+*.log
