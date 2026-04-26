@@ -52,6 +52,7 @@ def diagnostico_autores(cursor, auth_ids_validos):
 
     print(f"\n=== Diagnóstico de autores ===")
     print(f"  Total em autores_brutos (todos os anos)                  : {total_brutos}")
+    print(f"  Com publicações no treino ({ANO_TREINO_INI}-{ANO_TREINO_FIM})               : {total_1_pub}")
     print(f"  No grafo (>= {MIN_PUBLICACOES} pubs em {ANO_TREINO_INI}-{ANO_TREINO_FIM})                : {len(auth_ids_validos)}")
     print(f"  Cortados pelo filtro (exatamente 1 pub no treino)        : {filtro_min_pub}")
     print(f"  Sem publicação no treino (só em {ANO_VAL}/{ANO_TESTE})          : {so_val_teste}")
@@ -156,6 +157,22 @@ if __name__ == "__main__":
     G_teste = subgrafo_novos(G, ANO_TESTE)
     print(f"\n=== Subgrafo de teste ({ANO_TESTE}) ===")
     print(f"  Arestas novas: {G_teste.number_of_edges()}")
+
+    # Métricas acumuladas por período (para tabela do relatório)
+    mask_treino_val = (1 << (ANO_VAL - ANO_TREINO_INI + 1)) - 1  # bits 0-6
+    n = G.number_of_nodes()
+    arestas_treino     = sum(1 for _, _, d in G.edges(data=True)
+                             if int(d['anos_ativos']) & MASK_TREINO)
+    arestas_treino_val = sum(1 for _, _, d in G.edges(data=True)
+                             if int(d['anos_ativos']) & mask_treino_val)
+    arestas_total      = G.number_of_edges()
+
+    print(f"\n=== Métricas acumuladas por período ({n} vértices) ===")
+    print(f"{'Período':<12} {'Split':<22} {'Arestas':>10} {'Grau médio':>12}")
+    print("-" * 58)
+    print(f"{'2018-2023':<12} {'Treinamento':<22} {arestas_treino:>10,} {2*arestas_treino/n:>12.2f}")
+    print(f"{'2018-2024':<12} {'Treino+Validação':<22} {arestas_treino_val:>10,} {2*arestas_treino_val/n:>12.2f}")
+    print(f"{'2018-2025':<12} {'Total (instância)':<22} {arestas_total:>10,} {2*arestas_total/n:>12.2f}")
 
     conn.close()
 

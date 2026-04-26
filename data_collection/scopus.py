@@ -43,21 +43,14 @@ def coletar_artigos_unicamp(ano_inicio, ano_fim, ano_lote):
                         doc.source_id,
                         authkeywords))
         
-        # Pré-filtro: guarda apenas autores cuja afiliação na publicação é a Unicamp (ID 60007324).
+        # Guarda apenas autores cuja afiliação na publicação é a Unicamp (afid 60029570).
         # doc.author_afids tem um entry por autor, separados por ';'. Cada entry pode conter
-        # múltiplas afiliações separadas por '-'. Ex: "60007324-60003999;55432100"
-        # Fallback: se author_afids não estiver disponível no cache, inclui todos os autores
-        # e delega a filtragem ao refinador_unicamp.py.
-        if doc.author_ids:
-            ids = doc.author_ids.split(';')
-            if doc.author_afids:
-                afids = doc.author_afids.split(';')
-                for auth_id, afid_entry in zip(ids, afids):
-                    if '60029570' in afid_entry: # Número afid referente à unicamp
-                        cursor.execute('INSERT OR IGNORE INTO autores_brutos (auth_id) VALUES (?)', (auth_id.strip(),))
-                        cursor.execute('INSERT OR IGNORE INTO autor_publicacao VALUES (?,?)', (auth_id.strip(), doc.eid))
-            else:
-                for auth_id in ids:
+        # múltiplas afiliações separadas por '-'. Ex: "60029570-60003999;55432100"
+        if doc.author_ids and doc.author_afids:
+            ids   = doc.author_ids.split(';')
+            afids = doc.author_afids.split(';')
+            for auth_id, afid_entry in zip(ids, afids):
+                if '60029570' in afid_entry:
                     cursor.execute('INSERT OR IGNORE INTO autores_brutos (auth_id) VALUES (?)', (auth_id.strip(),))
                     cursor.execute('INSERT OR IGNORE INTO autor_publicacao VALUES (?,?)', (auth_id.strip(), doc.eid))
     
