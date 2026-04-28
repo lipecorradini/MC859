@@ -8,7 +8,7 @@ Este projeto tem como objetivo construir e analisar uma rede de colaboração en
 MC859/
 ├── data_collection/   # Scripts de coleta (Scopus) e construção do grafo
 ├── data/
-│   ├── raw/           # Banco de dados SQLite com os dados brutos
+│   ├── raw/           # Banco de dados SQLite e .csv com os dados brutos
 │   └── graphs/        # Grafos exportados em formato GraphML
 └── notebooks/         # Análises exploratórias e visualizações
 ```
