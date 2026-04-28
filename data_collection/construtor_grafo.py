@@ -67,8 +67,24 @@ def construir_grafo_unico(cursor, auth_ids_validos):
       weight      — número total de coautorias ao longo de todos os anos
     """
     G = nx.Graph()
+
+    cursor.execute('''
+        SELECT auth_id, nome, areas, citation_count, document_count,
+               h_index, pub_year_first, coauthor_count, is_unicamp
+        FROM autores_brutos
+    ''')
+    attr_map = {
+        row[0]: {k: v for k, v in zip(
+            ('nome', 'areas', 'citation_count', 'document_count',
+             'h_index', 'pub_year_first', 'coauthor_count', 'is_unicamp'),
+            row[1:]
+        ) if v is not None}
+        for row in cursor.fetchall()
+        if row[0] in auth_ids_validos
+    }
+
     for auth_id in auth_ids_validos:
-        G.add_node(auth_id)
+        G.add_node(auth_id, **attr_map.get(auth_id, {}))
 
     cursor.execute('''
         SELECT ap1.auth_id, ap2.auth_id,
