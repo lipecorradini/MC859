@@ -69,16 +69,12 @@ def construir_grafo_unico(cursor, auth_ids_validos):
     G = nx.Graph()
 
     cursor.execute('''
-        SELECT auth_id, nome, areas, citation_count, document_count,
-               h_index, pub_year_first, coauthor_count, is_unicamp
-        FROM autores_brutos
+        SELECT ab.auth_id, au.nome
+        FROM autores_brutos ab
+        LEFT JOIN autores_unicamp au ON ab.auth_id = au.auth_id
     ''')
     attr_map = {
-        row[0]: {k: v for k, v in zip(
-            ('nome', 'areas', 'citation_count', 'document_count',
-             'h_index', 'pub_year_first', 'coauthor_count', 'is_unicamp'),
-            row[1:]
-        ) if v is not None}
+        row[0]: {k: v for k, v in zip(('nome',), row[1:]) if v is not None}
         for row in cursor.fetchall()
         if row[0] in auth_ids_validos
     }
@@ -191,7 +187,3 @@ if __name__ == "__main__":
     print(f"{'2018-2025':<12} {'Total (instância)':<22} {arestas_total:>10,} {2*arestas_total/n:>12.2f}")
 
     conn.close()
-
-
-  
-
