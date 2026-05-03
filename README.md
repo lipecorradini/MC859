@@ -9,6 +9,7 @@ MC859/
 ├── data_collection/   # Scripts de coleta (Scopus) e construção do grafo
 ├── data/
 │   ├── raw/           # Banco de dados SQLite e .csv com os dados brutos
+│   ├── processed/     # Banco de dados com autores processados e informações adicionais (h-index, citações, áreas de pesquisa, etc.)
 │   └── graphs/        # Grafos exportados em formato GraphML
 └── notebooks/         # Análises exploratórias e visualizações
 ```
