@@ -68,19 +68,8 @@ def construir_grafo_unico(cursor, auth_ids_validos):
     """
     G = nx.Graph()
 
-    cursor.execute('''
-        SELECT ab.auth_id, au.nome
-        FROM autores_brutos ab
-        LEFT JOIN autores_unicamp au ON ab.auth_id = au.auth_id
-    ''')
-    attr_map = {
-        row[0]: {k: v for k, v in zip(('nome',), row[1:]) if v is not None}
-        for row in cursor.fetchall()
-        if row[0] in auth_ids_validos
-    }
-
     for auth_id in auth_ids_validos:
-        G.add_node(auth_id, **attr_map.get(auth_id, {}))
+        G.add_node(auth_id)
 
     cursor.execute('''
         SELECT ap1.auth_id, ap2.auth_id,
