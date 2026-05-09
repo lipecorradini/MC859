@@ -13,4 +13,3 @@ MC859/
 │   └── graphs/        # Grafos exportados em formato GraphML
 └── notebooks/         # Análises exploratórias e visualizações
 ```
-OBS: Devido a limites de API, os bancos de dados na pasta "processed" ainda estão em construção.
