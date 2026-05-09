@@ -1,3 +1,4 @@
+import csv
 import sqlite3
 from pathlib import Path
 from collections import defaultdict
@@ -15,8 +16,11 @@ ANOS            = list(range(ANO_TREINO_INI, ANO_TESTE + 1))
 NUM_ANOS        = len(ANOS)
 MASK_TREINO     = (1 << (ANO_TREINO_FIM - ANO_TREINO_INI + 1)) - 1  # bits 0–5
 
-DB_PATH    = Path(__file__).parent.parent / "data" / "raw" / "unicamp_network.db"
-GRAPHS_DIR = Path(__file__).parent.parent / "data" / "graphs"
+DB_PATH      = Path(__file__).parent.parent / "data" / "raw" / "unicamp_network.db"
+GRAPHS_DIR   = Path(__file__).parent.parent / "data" / "graphs"
+AUTORES_CSV  = Path(__file__).parent.parent / "data" / "processed" / "autores_grafo.csv"
+
+INT_ATTRS = ("h_index", "citation_count", "document_count", "coauthor_count", "pub_year_first")
 
 
 def get_auth_ids_validos(cursor):
@@ -123,6 +127,39 @@ def filtrar_lcc_treino(G):
     return G.subgraph(lcc_nodes).copy()
 
 
+def enriquecer_nos(G):
+    """
+    Adds numeric attributes and areas string to each node from autores_grafo.csv.
+    Prints a warning for every graph node missing from the CSV.
+    """
+    if not AUTORES_CSV.exists():
+        print(f"\n[AVISO] {AUTORES_CSV} não encontrado — nós exportados sem atributos.")
+        return
+
+    metadata = {}
+    with open(AUTORES_CSV, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            metadata[row["auth_id"]] = row
+
+    ausentes = []
+    for node in G.nodes():
+        if node not in metadata:
+            ausentes.append(node)
+            continue
+        m = metadata[node]
+        for attr in INT_ATTRS:
+            val = m.get(attr, "")
+            G.nodes[node][attr] = int(val) if val not in ("", "None", None) else -1
+        G.nodes[node]["areas"] = m.get("areas", "")
+
+    if ausentes:
+        print(f"\n[AVISO] {len(ausentes)} nó(s) do grafo sem entrada em autores_grafo.csv:")
+        for nid in ausentes:
+            print(f"  auth_id={nid}")
+    else:
+        print(f"\n  Atributos adicionados a {G.number_of_nodes()} nós a partir de {AUTORES_CSV.name}.")
+
+
 def salvar(G, nome):
     path = GRAPHS_DIR / nome
     nx.write_graphml(G, path)
@@ -145,6 +182,7 @@ if __name__ == "__main__":
     print(f"\n=== Grafo único ({ANO_TREINO_INI}-{ANO_TESTE}) — após filtro LCC do treino ===")
     print(f"  Vértices: {G.number_of_nodes()}")
     print(f"  Arestas : {G.number_of_edges()}")
+    enriquecer_nos(G)
     salvar(G, "grafo_unico.graphml")
 
     G_treino = subgrafo_treino(G)
