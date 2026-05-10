@@ -3,3 +3,4 @@ trabalhos/
 .claude
 CLAUDE.md
 .gitignore
+data_collection/__pycache__/
