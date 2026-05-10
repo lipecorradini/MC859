@@ -6,10 +6,28 @@ Este projeto tem como objetivo construir e analisar uma rede de colaboração en
 
 ```
 MC859/
-├── data_collection/   # Scripts de coleta (Scopus) e construção do grafo
+├── data_collection/
+│   ├── scopus.py                  # Coleta publicações da API Scopus → SQLite
+│   ├── obter_metricas_autores.py  # Enriquece autores com h-index, citações e áreas
+│   └── construtor_grafo.py        # Constrói o grafo e define helpers de subgrafo
 ├── data/
-│   ├── raw/           # Banco de dados SQLite e .csv com os dados brutos
-│   ├── processed/     # Banco de dados com autores processados e informações adicionais (h-index, citações, áreas de pesquisa, etc.)
-│   └── graphs/        # Grafos exportados em formato GraphML
-└── notebooks/         # Análises exploratórias e visualizações
+│   ├── raw/
+│   │   ├── unicamp_network.db     # Banco SQLite com autores e publicações
+│   │   ├── autores_brutos.csv
+│   │   ├── publicacoes.csv
+│   │   └── autor_publicacao.csv
+│   ├── processed/
+│   │   └── autores_grafo.csv      # Atributos enriquecidos por autor (h-index, citações, áreas)
+│   ├── graphs/
+│   │   └── grafo_unico.graphml    # Grafo completo 2018–2025 com bitmask de anos ativos
+│   ├── splits/
+│   │   ├── val_pairs.csv          # Pares (node_u, node_v, label) para validação (2024)
+│   │   └── test_pairs.csv         # Pares (node_u, node_v, label) para teste (2025)
+│   └── results/
+│       └── heuristics/            # Scores das heurísticas por método e split
+├── models/
+│   ├── 00_generate_splits.ipynb   # Gera os pares positivos e negativos de val/test
+│   └── 01_heuristics.ipynb        # Heurísticas estruturais (CN, Adamic-Adar, Jaccard, Katz)
+└── notebooks/
+    └── analise_inicial.ipynb      # Análise exploratória e visualizações do grafo
 ```
