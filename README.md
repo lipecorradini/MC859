@@ -21,8 +21,8 @@ MC859/
 │   ├── graphs/
 │   │   └── grafo_unico.graphml    # Grafo completo 2018–2025 com bitmask de anos ativos
 │   ├── splits/
-│   │   ├── val_pairs.csv          # Pares (node_u, node_v, label) para validação (2024)
-│   │   └── test_pairs.csv         # Pares (node_u, node_v, label) para teste (2025)
+│   │   ├── val_pairs.csv          # Pares de arestas positivas e negativas para validação (2024)
+│   │   └── test_pairs.csv         # Pares de arestas positivas e negativas para teste (2025)
 │   └── results/
 │       └── heuristics/            # Scores das heurísticas por método e split
 ├── models/
