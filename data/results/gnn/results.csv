@@ -1,0 +1,3 @@
+Método,Split,AUC-ROC,Avg Prec,F1,Precision,Recall
+graphsage,val,0.8804,0.8823,0.8037,0.7450,0.8724
+graphsage,test,0.8841,0.8886,0.8017,0.7391,0.8758
